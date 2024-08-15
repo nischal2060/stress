@@ -1,39 +1,44 @@
 import argparse
+import asyncio
+from mcpy import MinecraftBot
+from mcpy.exceptions import ConnectionException
 import time
-from mcstatus import JavaServer
-import concurrent.futures
 
-def stress_test(server_address, num_requests, num_threads):
-    server = JavaServer.lookup(server_address)
+async def connect_bot(server_address, server_port):
+    bot = MinecraftBot()
+    try:
+        await bot.connect(server_address, server_port)
+        await bot.disconnect()
+        print(f"Bot connected and disconnected successfully.")
+    except ConnectionException as e:
+        print(f"Failed to connect: {e}")
 
-    def query_server():
-        try:
-            status = server.status()
-            print(f"Server has {status.players.online} players and replied in {status.latency} ms")
-        except Exception as e:
-            print(f"Failed to query server: {e}")
+async def stress_test(server_address, server_port, num_bots, num_concurrent):
+    sem = asyncio.Semaphore(num_concurrent)
+    tasks = []
+
+    async def bot_task():
+        async with sem:
+            await connect_bot(server_address, server_port)
+
+    for _ in range(num_bots):
+        tasks.append(bot_task())
 
     start_time = time.time()
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-        futures = [executor.submit(query_server) for _ in range(num_requests)]
-        
-        # Wait for all the futures to complete
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                future.result()
-            except Exception as e:
-                print(f"Request failed: {e}")
-
+    await asyncio.gather(*tasks)
     end_time = time.time()
-    print(f"Load test completed in {end_time - start_time} seconds")
+    print(f"Stress test completed in {end_time - start_time} seconds")
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Stress test a Minecraft server.")
-    parser.add_argument("server_address", type=str, help="The Minecraft server address (e.g., example.com:25565).")
-    parser.add_argument("num_requests", type=int, help="The total number of requests to send.")
-    parser.add_argument("--threads", type=int, default=100, help="Number of concurrent threads (default: 100).")
+def main():
+    parser = argparse.ArgumentParser(description="Stress test a Minecraft server by pushing multiple bots.")
+    parser.add_argument("server_address", type=str, help="The Minecraft server address (e.g., example.com).")
+    parser.add_argument("server_port", type=int, help="The Minecraft server port (e.g., 25565).")
+    parser.add_argument("num_bots", type=int, help="The total number of bots to connect.")
+    parser.add_argument("--concurrent", type=int, default=100, help="Number of concurrent bot connections (default: 100).")
 
     args = parser.parse_args()
 
-    stress_test(args.server_address, args.num_requests, args.threads)
+    asyncio.run(stress_test(args.server_address, args.server_port, args.num_bots, args.concurrent))
+
+if __name__ == "__main__":
+    main()
