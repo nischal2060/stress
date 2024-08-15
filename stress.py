@@ -1,10 +1,10 @@
 import argparse
 import time
-from mcstatus import MinecraftServer
+from mcstatus import JavaServer
 import concurrent.futures
 
 def stress_test(server_address, num_requests, num_threads):
-    server = MinecraftServer.lookup(server_address)
+    server = JavaServer.lookup(server_address)
 
     def query_server():
         try:
